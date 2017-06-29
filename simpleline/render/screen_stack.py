@@ -37,10 +37,7 @@ class ScreenStack(object):
         self._screens = []
 
     def is_empty(self):
-        if not self._screens:
-            return True
-        else:
-            return False
+        return not self._screens
 
     def size(self):
         return len(self._screens)

@@ -317,27 +317,27 @@ class Renderer(object):
                 self._event_loop.enqueue_signal(ExceptionSignal(self))
                 return False
 
-        # global refresh command
-        if not self._screen_stack.is_empty() and (key == Prompt.REFRESH):
-            self.redraw()
-            return True
+            # global refresh command
+            if key == Prompt.REFRESH:
+                self.redraw()
+                return True
 
-        # global close command
-        if not self._screen_stack.is_empty() and (key == Prompt.CONTINUE):
-            self.close_screen()
-            return True
+            # global close command
+            if key == Prompt.CONTINUE:
+                self.close_screen()
+                return True
 
-        # global quit command
-        elif not self._screen_stack.is_empty() and (key == Prompt.QUIT):
-            if self.quit_screen:
-                quit_screen = self.quit_screen
-                d = quit_screen(self, self._quit_message)
-                self.switch_screen_modal(d)
-                if d.answer:
+            # global quit command
+            if key == Prompt.QUIT:
+                if self.quit_screen:
+                    quit_screen = self.quit_screen
+                    d = quit_screen(self, self._quit_message)
+                    self.switch_screen_modal(d)
+                    if d.answer:
+                        raise ExitMainLoop()
+                else:
                     raise ExitMainLoop()
-            else:
-                raise ExitMainLoop()
-            return True
+                return True
 
         return False
 
