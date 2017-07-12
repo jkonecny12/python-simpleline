@@ -21,6 +21,7 @@
 
 
 import functools
+from math import ceil
 from textwrap import wrap
 from simpleline.utils.i18n import _
 from simpleline.utils import ensure_str
@@ -85,7 +86,7 @@ class Widget(object):
         """
         return [str(u"".join(line)) for line in self._buffer]
 
-    def setxy(self, row, col):
+    def set_cursor_position(self, row, col):
         """Set cursor position.
 
         :param row: row id, starts with 0 at the top of the screen
@@ -184,23 +185,7 @@ class Widget(object):
         y = col
 
         if wordwrap:
-            lines = []
-            # Wrap each line separately
-            for line in text.split('\n'):
-                sublines = []
-                for subline in wrap(line, width):
-                    sublines.append(subline)
-                    if len(subline) < width:
-                        # line shorter than width will be wrapped by '\n' we add
-                        sublines.append('\n')
-                    # line with length == width will be wrapped by the width based
-                    # wrapping logic
-                # end of line will be wrapped by '\n' following the line in
-                # original text
-                if sublines and sublines[-1] == '\n':
-                    sublines.pop()
-                lines.append("".join(sublines))
-            text = '\n'.join(lines)
+            text = self._wrap_words(text, width)
 
         # emulate typing machine
         for character in text:
@@ -235,6 +220,25 @@ class Widget(object):
                     y = 0
 
         self._cursor = (x, y)
+
+    def _wrap_words(self, text, width):
+        lines = []
+        # Wrap each line separately
+        for line in text.split('\n'):
+            sublines = []
+            for subline in wrap(line, width):
+                sublines.append(subline)
+                if len(subline) < width:
+                    # line shorter than width will be wrapped by '\n' we add
+                    sublines.append('\n')
+                # line with length == width will be wrapped by the width based
+                # wrapping logic
+            # end of line will be wrapped by '\n' following the line in
+            # original text
+            if sublines and sublines[-1] == '\n':
+                sublines.pop()
+            lines.append("".join(sublines))
+        return '\n'.join(lines)
 
 
 class TextWidget(Widget):
@@ -281,58 +285,6 @@ class CenterWidget(Widget):
         self._w.render(width)
         # make sure col is an integer
         self.draw(self._w, col=(width - self._w.width) // 2)
-
-
-class ColumnWidget(Widget):
-
-    def __init__(self, columns, spacing=0):
-        """Create text columns
-
-        :param columns: list containing (column width, [list of widgets to put into this column])
-        :type columns: [(int, [...]), ...]
-
-        :param spacing: number of spaces to use between columns
-        :type spacing: int
-        """
-        super().__init__()
-        self._spacing = spacing
-        self._columns = columns
-
-    def render(self, width):
-        """Render the widget to it's internal buffer
-
-        :param width: the maximum width the widget can use
-        :type width: int
-
-        :return: nothing
-        :rtype: None
-        """
-        super().render(width)
-
-        # the leftmost empty column
-        x = 0
-
-        # iterate over tuples (column width, column content)
-        for col_width, col in self._columns:
-
-            # set cursor to first line and leftmost empty column
-            self.setxy(0, x)
-
-            # if requested width is None, limit the maximum to width
-            # and set minimum to 0
-            if col_width is None:
-                col_max_width = width - self.cursor[1]
-                col_width = 0
-            else:
-                col_max_width = col_width
-
-            # render and draw contents of column
-            for item in col:
-                item.render(col_max_width)
-                self.draw(item, block=True)
-
-            # recompute the leftmost empty column
-            x = max((x + col_width), self.width) + self._spacing
 
 
 class CheckboxWidget(Widget):
@@ -405,3 +357,160 @@ class CheckboxWidget(Widget):
     def text(self):
         """Contains the description text from the second line."""
         return self._text
+
+
+class ColumnWidget(Widget):
+
+    def __init__(self, columns, spacing=0):
+        """Create text columns
+
+        :param columns: list containing (column width, [list of widgets to put into this column])
+        :type columns: [(int, [...]), ...]
+
+        :param spacing: number of spaces to use between columns
+        :type spacing: int
+        """
+        super().__init__()
+        self._spacing = spacing
+        self._columns = columns
+
+    def render(self, width):
+        """Render the widget to it's internal buffer
+
+        :param width: the maximum width the widget can use
+        :type width: int
+
+        :return: nothing
+        """
+        super().render(width)
+
+        # the leftmost empty column
+        col_pos = 0
+
+        # iterate over tuples (column width, column content)
+        for col_width, col in self._columns:
+
+            # set cursor to first line and leftmost empty column
+            self.set_cursor_position(0, col_pos)
+
+            # if requested width is None, limit the maximum to width
+            # and set minimum to 0
+            if col_width is None:
+                col_max_width = width - self.cursor[1]
+                col_width = 0
+            else:
+                col_max_width = col_width
+
+            # render and draw contents of column
+            for item in col:
+                item.render(col_max_width)
+                self.draw(item, block=True)
+
+            # recompute the leftmost empty column
+            col_pos = max((col_pos + col_width), self.width) + self._spacing
+
+
+class ListRowWidget(Widget):
+    """Place widgets in rows. Place widgets for the best spread out."""
+
+    def __init__(self, widgets, columns, columns_width=25, spacing=3):
+        """Create ListWidget with specific number of columns.
+
+        :param widgets: Widgets you want to position.
+        :type widgets: Array of `Widget` based class.
+
+        :param columns: How many columns we want.
+        :type columns: int, bigger than 0
+
+        :param columns_width: Width of every column.
+        :type columns_width: int
+
+        :param spacing: Set the spacing between columns.
+        :type spacing: int
+        """
+        super().__init__()
+        self._columns = columns
+        self._widgets = widgets
+        self._columns_width = columns_width
+        self._spacing = spacing
+
+    def prepare_list(self):
+        """Prepare list for items ordering to rows and columns.
+
+        List will be prepared as ([column 1], [column 2], ...)
+        """
+        return list(map(lambda x: [], range(0, self._columns)))
+
+    def render(self, width):
+        """Render widgets to it's internal buffer.
+
+        :param width: the maximum width the widget can use
+        :type width: int
+
+        :return: nothing
+        """
+        super().render(width)
+
+        ordered_items = self._order_items()
+        lines_per_rows = self.render_and_calculate_lines_per_rows(ordered_items)
+
+        # the leftmost empty column
+        col_pos = 0
+
+        for col in ordered_items:
+            row_pos = 0
+
+            # render and draw contents of column
+            for row_id, item in enumerate(col):
+                # set cursor to first line and leftmost empty column
+                self.set_cursor_position(row_pos, col_pos)
+
+                self.draw(item, block=True)
+                row_pos = row_pos + lines_per_rows[row_id]
+
+            # recompute the leftmost empty column
+            col_pos = max((col_pos + self._columns_width), self.width) + self._spacing
+
+    def render_and_calculate_lines_per_rows(self, ordered_items):
+        self._render_all_items()
+        return self._lines_per_every_row(ordered_items)
+
+    def _render_all_items(self):
+        for item in self._widgets:
+            item.render(self._columns_width)
+
+    def _lines_per_every_row(self, items):
+        # call `self._render_and_calculate_lines_per_rows()` method instead
+        lines_per_row = []
+
+        # go through all items and find how many lines we need for each row printed (because of wrapping)
+        for column_items in items:
+            for row_id, item in enumerate(column_items):
+                if len(lines_per_row) <= row_id:
+                    lines_per_row.append(0)
+
+                lines_per_row[row_id] = max(lines_per_row[row_id], len(item.get_lines()))
+
+        return lines_per_row
+
+    def _order_items(self):
+        # create list of columns (lists)
+        positioned_items = self.prepare_list()
+
+        for item_id, item in enumerate(self._widgets):
+            positioned_items[item_id % self._columns].append(item)
+
+        return positioned_items
+
+
+class ListColumnWidget(ListRowWidget):
+
+    def _order_items(self):
+        positioned_items = self.prepare_list()
+        items_in_column = ceil(len(self._widgets) / self._columns)
+
+        for item_id, item in enumerate(self._widgets):
+            col_position = int(item_id // items_in_column)
+            positioned_items[col_position].append(item)
+
+        return positioned_items
