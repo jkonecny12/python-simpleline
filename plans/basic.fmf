@@ -1,0 +1,8 @@
+summary: Basic tests for simpleline project
+discover:
+    how: fmf
+provision:
+    how: container
+    image: centos:8
+execute:
+    how: shell

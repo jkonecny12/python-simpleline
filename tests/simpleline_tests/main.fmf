@@ -1,0 +1,10 @@
+summary: Unit tests for simpleline project
+contact: Jiří Konečný <jkonecny@redhat.com>
+description: |
+    Run all unit-tests for Simpleline project.
+test: python3 -m unittest discover -v -s tests/ -p '*_test.py'
+duration: 10m
+require:
+    - python3-simpleline
+    - python3
+    - python3-gobject-base
